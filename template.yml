@@ -1,0 +1,78 @@
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Default: my-website-982503247633
+
+Resources:
+  S3BucketPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: S3AdminOnBucket
+          Effect: Allow
+          Action: s3:*
+          Resource:
+          - !Sub arn:aws:s3:::${S3BucketName}
+          - !Sub arn:aws:s3:::${S3BucketName}/*
+    
+      PolicyName: S3BucketPolicy
+      Roles:
+      - !Ref S3BucketRole
+
+  S3BucketRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - sts:AssumeRole
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+  
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref S3BucketRole
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-094125af156557ca2
+      KeyName: us-west-2-key
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref ServerSecurityGroup
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install httpd -y
+          systemctl start httpd
+          systemctl enable httpd
+          aws s3 sync s3://${S3BucketName} /var/www/html/
+
+  ServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  EC2ServerPublicDns:
+    Value: !GetAtt EC2Instance.PublicDnsName
